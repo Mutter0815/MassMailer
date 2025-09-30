@@ -1,0 +1,63 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pass}
+      POSTGRES_DB: ${POSTGRES_DB:-massmailer}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ../migrations:/migrations:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-user}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    ports:
+      - "5672:5672"     # AMQP
+      - "15672:15672"   # UI: http://localhost:15672
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  campaign-api:
+    build:
+      context: ..
+      dockerfile: services/campaign-api/Dockerfile
+    environment:
+      DB_DSN: postgres://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-pass}@postgres:5432/${POSTGRES_DB:-massmailer}?sslmode=disable
+      RMQ_URL: ${RMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
+      PORT: ${API_PORT:-8080}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    ports:
+      - "${API_PORT:-8080}:8080"
+
+  sender-worker:
+    build:
+      context: ..
+      dockerfile: services/sender-worker/Dockerfile
+    environment:
+      DB_DSN: postgres://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-pass}@postgres:5432/${POSTGRES_DB:-massmailer}?sslmode=disable
+      RMQ_URL: ${RMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
+      QUEUE: send_jobs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+volumes:
+  pgdata:
