@@ -21,8 +21,8 @@ services:
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
     ports:
-      - "5672:5672"     # AMQP
-      - "15672:15672"   # UI: http://localhost:15672
+      - "127.0.0.1:35672:5672"   # AMQP 
+      - "127.0.0.1:30080:15672" # UI
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
       interval: 10s
