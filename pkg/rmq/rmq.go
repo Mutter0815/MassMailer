@@ -2,6 +2,7 @@ package rmq
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -18,34 +19,49 @@ func NewPublisher(url, queue string) (*Publisher, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	ch, err := conn.Channel()
 	if err != nil {
+		_ = conn.Close()
 		return nil, err
-
 	}
 
 	if _, err := ch.QueueDeclare(queue, true, false, false, false, nil); err != nil {
-		ch.Close()
-		conn.Close()
+		_ = ch.Close()
+		_ = conn.Close()
 		return nil, err
 	}
+
 	return &Publisher{conn: conn, ch: ch, queue: queue}, nil
 }
 
 func (p *Publisher) Close() error {
-	_ = p.ch.Close()
-	return p.conn.Close()
+	var cerr error
+	if p.ch != nil {
+		if err := p.ch.Close(); err != nil && !errors.Is(err, amqp.ErrClosed) {
+			cerr = err
+		}
+	}
+	if p.conn != nil {
+		if err := p.conn.Close(); err != nil && !errors.Is(err, amqp.ErrClosed) && cerr == nil {
+			cerr = err
+		}
+	}
+	return cerr
 }
 
 func (p *Publisher) PublishJSON(ctx context.Context, body []byte) error {
-	return p.ch.PublishWithContext(ctx,
-		"", p.queue, false, false,
+	return p.ch.PublishWithContext(
+		ctx,
+		"", p.queue, // exchange, key
+		false, false,
 		amqp.Publishing{
 			ContentType:  "application/json",
 			DeliveryMode: amqp.Persistent,
 			Timestamp:    time.Now(),
 			Body:         body,
-		})
+		},
+	)
 }
 
 type Consumer struct {
@@ -59,17 +75,25 @@ func NewConsumer(url, queue string) (*Consumer, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	ch, err := conn.Channel()
 	if err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, err
 	}
+
 	if _, err := ch.QueueDeclare(queue, true, false, false, false, nil); err != nil {
-		ch.Close()
-		conn.Close()
+		_ = ch.Close()
+		_ = conn.Close()
 		return nil, err
 	}
-	_ = ch.Qos(10, 0, false)
+
+	if err := ch.Qos(10, 0, false); err != nil {
+		_ = ch.Close()
+		_ = conn.Close()
+		return nil, err
+	}
+
 	return &Consumer{conn: conn, Ch: ch, Queue: queue}, nil
 }
 
@@ -78,6 +102,16 @@ func (c *Consumer) Consume() (<-chan amqp.Delivery, error) {
 }
 
 func (c *Consumer) Close() error {
-	_ = c.Ch.Close()
-	return c.conn.Close()
+	var cerr error
+	if c.Ch != nil {
+		if err := c.Ch.Close(); err != nil && !errors.Is(err, amqp.ErrClosed) {
+			cerr = err
+		}
+	}
+	if c.conn != nil {
+		if err := c.conn.Close(); err != nil && !errors.Is(err, amqp.ErrClosed) && cerr == nil {
+			cerr = err
+		}
+	}
+	return cerr
 }
