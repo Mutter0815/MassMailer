@@ -98,11 +98,18 @@ func (h *Handlers) CreateCampaign(c *gin.Context) {
 			RecipientID: r.id,
 			Address:     r.addr,
 		}
-		if b, _ := json.Marshal(job); h.Pub.PublishJSON(ctxPub, b) != nil {
-			// TODO: лог/метрика
-		} else {
-			metrics.PublishedJobsTotal.Inc()
+		payload, err := json.Marshal(job)
+		if err != nil {
+			logx.L().Errorw("job_marshal_error", "campaign_id", campaignID, "recipient_id", r.id, "error", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "publish error"})
+			return
 		}
+		if err := h.Pub.PublishJSON(ctxPub, payload); err != nil {
+			logx.L().Errorw("publish_job_error", "campaign_id", campaignID, "recipient_id", r.id, "error", err)
+			c.JSON(http.StatusBadGateway, gin.H{"error": "queue unavailable"})
+			return
+		}
+		metrics.PublishedJobsTotal.Inc()
 	}
 
 	c.JSON(http.StatusOK, campaign.CreateCampaignResp{ID: campaignID})
