@@ -1,0 +1,18 @@
+run:
+  timeout: 5m
+  tests: false
+  skip-dirs:
+    - deployments
+    - migrations
+
+linters:
+  disable-all: true
+  enable:
+    - govet      
+    - gofmt      
+    - errcheck   
+
+issues:
+  exclude-use-default: true
+  max-issues-per-linter: 0
+  max-same-issues: 0

@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Mutter0815/MassMailer/pkg/logx"
 )
 
 type Store struct {
@@ -35,7 +37,12 @@ func (s *Store) WithTx(ctx context.Context, fn func(tx *sql.Tx) error) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() {
+
+		if rerr := tx.Rollback(); rerr != nil && rerr != sql.ErrTxDone {
+			logx.L().Errorw("tx_rollback_error", "error", rerr)
+		}
+	}()
 
 	if err := fn(tx); err != nil {
 		return err
@@ -140,7 +147,9 @@ func (s *Store) ListCampaigns(ctx context.Context, limit, offset int) ([]Campaig
 	if err != nil {
 		return nil, nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	var campaigns []CampaignRow
 	var ids []int64
@@ -172,7 +181,7 @@ func (s *Store) ListCampaigns(ctx context.Context, limit, offset int) ([]Campaig
 	if err != nil {
 		return nil, nil, err
 	}
-	defer statRows.Close()
+	defer func() { _ = statRows.Close() }()
 
 	statsByID := make(map[int64]CampaignStats, len(ids))
 	for statRows.Next() {

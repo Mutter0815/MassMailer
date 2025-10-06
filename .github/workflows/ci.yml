@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Go
@@ -38,30 +38,27 @@ jobs:
             exit 1
           fi
 
-      - name: Run static analysis
+      - name: Run vet
         run: go vet ./...
 
-      - name: Build binaries
+      - name: Build all binaries
         run: go build ./...
 
-      - name: Run tests (with race detector)
+      - name: Run tests (race detector)
         run: go test ./... -race -count=1 -v
 
   lint:
-    name: Lint (golangci-lint)
+    name: Lint (golangci-lint minimal)
     runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: '1.23'
 
-      - name: Run golangci-lint
+      - name: Run golangci-lint (minimal config)
         uses: golangci/golangci-lint-action@v6
         with:
           version: v1.59.1
           args: --timeout 5m
-

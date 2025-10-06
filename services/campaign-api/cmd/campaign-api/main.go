@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -20,38 +19,59 @@ import (
 func main() {
 	logx.Init()
 	defer logx.Sync()
+
 	config.MustLoadAPI()
 	cfg := config.API
 
 	sqlDB, err := db.Open(cfg.DBDSN)
 	if err != nil {
-		log.Fatal("db open:", err)
+		logx.L().Fatalw("db_open_error", "error", err)
 	}
-	defer sqlDB.Close()
+	defer func() {
+		if err := sqlDB.Close(); err != nil {
+			logx.L().Warnw("db_close_error", "error", err)
+		} else {
+			logx.L().Infow("db_closed")
+		}
+	}()
 
 	st := store.New(sqlDB)
 
 	pub, err := rmq.NewPublisher(cfg.RMQURL, cfg.Queue)
 	if err != nil {
-		log.Fatal("rmq:", err)
+		logx.L().Fatalw("rmq_init_error", "error", err)
 	}
-	defer pub.Close()
+	defer func() {
+		if err := pub.Close(); err != nil {
+			logx.L().Warnw("rmq_publisher_close_error", "error", err)
+		} else {
+			logx.L().Infow("rmq_publisher_closed")
+		}
+	}()
 
 	h := server.NewHandlers(st, pub)
 	srv := server.NewHTTPServer(":"+cfg.Port, h)
 
 	go func() {
-		log.Println("campaign-api listening on :" + cfg.Port)
+		logx.L().Infow("api_listen_start", "addr", ":"+cfg.Port)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatal("http:", err)
+			logx.L().Fatalw("http_server_error", "error", err)
 		}
 	}()
 
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+	sig := <-stop
+	logx.L().Infow("signal_received", "signal", sig.String())
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_ = srv.Shutdown(ctx)
+
+	if err := srv.Shutdown(ctx); err != nil {
+		logx.L().Errorw("server_shutdown_error", "error", err)
+	} else {
+		logx.L().Infow("server_shutdown_success")
+	}
+
+	logx.L().Infow("campaign-api stopped gracefully")
 }

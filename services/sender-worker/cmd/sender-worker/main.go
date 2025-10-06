@@ -28,16 +28,22 @@ func main() {
 	if err != nil {
 		logx.L().Fatalw("db_open_error", "error", err)
 	}
-	defer sqlDB.Close()
+	defer func() {
+		if err := sqlDB.Close(); err != nil {
+			logx.L().Warnf("warn: db close error: %v\n", err)
+		}
+	}()
 
-	// RMQ
 	cons, err := rmq.NewConsumer(cfg.RMQURL, cfg.Queue)
 	if err != nil {
 		logx.L().Fatalw("rmq_consumer_error", "error", err)
 	}
-	defer cons.Close()
+	defer func() {
+		if err := cons.Close(); err != nil {
+			logx.L().Warnf("warn: rmq consumer close error: %v\n", err)
+		}
+	}()
 
-	// metrics HTTP
 	metricsAddr := getenv("METRICS_ADDR", ":9090")
 	go func() {
 		mux := http.NewServeMux()
@@ -46,7 +52,6 @@ func main() {
 		_ = http.ListenAndServe(metricsAddr, mux)
 	}()
 
-	// run worker
 	w := worker.New(store.New(sqlDB), cons)
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

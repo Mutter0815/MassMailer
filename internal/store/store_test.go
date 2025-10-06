@@ -14,7 +14,7 @@ func TestInsertCampaign_WithTx(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	s := New(db)
 	ctx := context.Background()
@@ -50,7 +50,7 @@ func TestInsertRecipient_And_Message(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	s := New(db)
 	ctx := context.Background()
