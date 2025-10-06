@@ -8,8 +8,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/Mutter0815/MassMailer/internal/campaign"
+	"github.com/Mutter0815/MassMailer/internal/store"
 )
 
 type fakeStore struct {
@@ -23,20 +25,54 @@ func (f *fakeStore) WithTx(ctx context.Context, fn func(tx *sql.Tx) error) error
 	if f.failTx {
 		return errTest("tx failed")
 	}
-
 	return fn(&sql.Tx{})
 }
+
 func (f *fakeStore) InsertCampaign(ctx context.Context, tx *sql.Tx, name, body string, scheduledAt any) (int64, error) {
 	f.insertCampaignHit = true
-	return 42, nil
+	return int64(42), nil
 }
+
 func (f *fakeStore) InsertRecipient(ctx context.Context, tx *sql.Tx, campaignID int64, address string) (int64, error) {
 	f.recipientsN++
 	return int64(100 + f.recipientsN), nil
 }
+
 func (f *fakeStore) InsertMessagePending(ctx context.Context, tx *sql.Tx, campaignID, recipientID int64) error {
 	f.msgsN++
 	return nil
+}
+
+func (f *fakeStore) GetCampaign(ctx context.Context, id int64) (store.CampaignRow, error) {
+	return store.CampaignRow{
+		ID:          id,
+		Name:        "stub",
+		Body:        "body",
+		ScheduledAt: time.Unix(0, 0).UTC(),
+		Status:      "queued",
+		CreatedAt:   time.Unix(0, 0).UTC(),
+	}, nil
+}
+
+func (f *fakeStore) GetCampaignStats(ctx context.Context, id int64) (store.CampaignStats, error) {
+	return store.CampaignStats{
+		Total:   3,
+		Pending: 0,
+		Sent:    2,
+		Failed:  1,
+	}, nil
+}
+
+func (f *fakeStore) ListCampaigns(ctx context.Context, limit, offset int) ([]store.CampaignRow, []store.CampaignStats, error) {
+	rows := []store.CampaignRow{
+		{ID: 1, Name: "A", ScheduledAt: time.Unix(0, 0).UTC(), Status: "queued", CreatedAt: time.Unix(0, 0).UTC()},
+		{ID: 2, Name: "B", ScheduledAt: time.Unix(0, 0).UTC(), Status: "queued", CreatedAt: time.Unix(0, 0).UTC()},
+	}
+	stats := []store.CampaignStats{
+		{Total: 3, Pending: 0, Sent: 3, Failed: 0},
+		{Total: 3, Pending: 1, Sent: 1, Failed: 1},
+	}
+	return rows, stats, nil
 }
 
 type fakePublisher struct{ n int }
