@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
-	"math/rand/v2"
+	"math/rand"
 	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
