@@ -44,6 +44,16 @@ func main() {
 		}
 	}()
 
+	pub, err := rmq.NewPublisher(cfg.RMQURL, cfg.Queue)
+	if err != nil {
+		logx.L().Fatalw("rmq_publisher_error", "error", err)
+	}
+	defer func() {
+		if err := pub.Close(); err != nil {
+			logx.L().Warnf("warn: rmq publisher close error: %v\n", err)
+		}
+	}()
+
 	metricsAddr := getenv("METRICS_ADDR", ":9090")
 	go func() {
 		mux := http.NewServeMux()
@@ -52,7 +62,7 @@ func main() {
 		_ = http.ListenAndServe(metricsAddr, mux)
 	}()
 
-	w := worker.New(store.New(sqlDB), cons)
+	w := worker.New(store.New(sqlDB), cons, pub)
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 

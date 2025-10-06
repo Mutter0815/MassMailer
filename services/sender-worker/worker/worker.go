@@ -20,6 +20,10 @@ import (
 
 var errTemp = errors.New("temporary send error")
 
+func init() {
+	rand.Seed(time.Now().UnixNano())
+}
+
 // имитация отправки (здесь будет SMTP/API)
 func simulateSend(address, body string) error {
 	if rand.Float64() < 0.85 {
@@ -31,10 +35,11 @@ func simulateSend(address, body string) error {
 type Worker struct {
 	Store *store.Store
 	Cons  *rmq.Consumer
+	Pub   *rmq.Publisher
 }
 
-func New(st *store.Store, cons *rmq.Consumer) *Worker {
-	return &Worker{Store: st, Cons: cons}
+func New(st *store.Store, cons *rmq.Consumer, pub *rmq.Publisher) *Worker {
+	return &Worker{Store: st, Cons: cons, Pub: pub}
 }
 
 func (w *Worker) Run(ctx context.Context, db *sql.DB) error {
@@ -86,19 +91,26 @@ func (w *Worker) Run(ctx context.Context, db *sql.DB) error {
 				logx.L().Infow("send_failed", append(fields, "error", err)...)
 
 				ctx2, cancel2 := context.WithTimeout(ctx, 5*time.Second)
-				_ = w.Store.MarkMessageFailed(ctx2, db, job.CampaignID, job.RecipientID, err.Error())
+				if err := w.Store.MarkMessageFailed(ctx2, db, job.CampaignID, job.RecipientID, err.Error()); err != nil {
+					cancel2()
+					logx.L().Errorw("db_mark_failed_error", append(fields, "error", err)...)
+					metrics.WorkerProcessDuration.Observe(time.Since(start).Seconds())
+					_ = d.Nack(false, true)
+					continue
+				}
 				cancel2()
 
 				metrics.WorkerJobsFailed.Inc()
 
 				retries := headerRetries(d.Headers)
 				if retries < 3 {
-					setHeaderRetries(&d.Headers, retries+1)
 					delay := backoffDelay(retries)
 					metrics.WorkerJobRetries.Inc()
 					logx.L().Infow("retry_requeue", append(fields, "retries", retries+1, "delay", delay.String())...)
-					time.Sleep(delay)
-					_ = d.Nack(false, true)
+					if err := w.requeueMessage(ctx, d, retries+1, delay); err != nil {
+						logx.L().Errorw("retry_publish_error", append(fields, "retries", retries+1, "error", err)...)
+						_ = d.Nack(false, true)
+					}
 				} else {
 					logx.L().Warnw("drop_after_retries", append(fields, "retries", retries)...)
 					_ = d.Ack(false)
@@ -109,7 +121,13 @@ func (w *Worker) Run(ctx context.Context, db *sql.DB) error {
 			}
 
 			ctx3, cancel3 := context.WithTimeout(ctx, 5*time.Second)
-			_ = w.Store.MarkMessageSent(ctx3, db, job.CampaignID, job.RecipientID)
+			if err := w.Store.MarkMessageSent(ctx3, db, job.CampaignID, job.RecipientID); err != nil {
+				cancel3()
+				logx.L().Errorw("db_mark_sent_error", append(fields, "error", err)...)
+				metrics.WorkerProcessDuration.Observe(time.Since(start).Seconds())
+				_ = d.Nack(false, true)
+				continue
+			}
 			cancel3()
 
 			metrics.WorkerJobsSent.Inc()
@@ -119,6 +137,29 @@ func (w *Worker) Run(ctx context.Context, db *sql.DB) error {
 			_ = d.Ack(false)
 		}
 	}
+}
+
+func (w *Worker) requeueMessage(ctx context.Context, d amqp.Delivery, retries int, delay time.Duration) error {
+	if delay > 0 {
+		timer := time.NewTimer(delay)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+
+	headers := copyHeaders(d.Headers)
+	setHeaderRetries(&headers, retries)
+
+	pubCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	if err := w.Pub.PublishJSONWithHeaders(pubCtx, d.Body, headers); err != nil {
+		return err
+	}
+
+	return d.Ack(false)
 }
 
 func headerRetries(h amqp.Table) int {
@@ -153,4 +194,15 @@ func backoffDelay(retries int) time.Duration {
 	}
 	sec := math.Pow(2, float64(retries-1))
 	return time.Duration(sec) * time.Second
+}
+
+func copyHeaders(h amqp.Table) amqp.Table {
+	if h == nil {
+		return amqp.Table{}
+	}
+	dup := make(amqp.Table, len(h))
+	for k, v := range h {
+		dup[k] = v
+	}
+	return dup
 }

@@ -51,6 +51,10 @@ func (p *Publisher) Close() error {
 }
 
 func (p *Publisher) PublishJSON(ctx context.Context, body []byte) error {
+	return p.PublishJSONWithHeaders(ctx, body, nil)
+}
+
+func (p *Publisher) PublishJSONWithHeaders(ctx context.Context, body []byte, headers amqp.Table) error {
 	return p.ch.PublishWithContext(
 		ctx,
 		"", p.queue, // exchange, key
@@ -60,6 +64,7 @@ func (p *Publisher) PublishJSON(ctx context.Context, body []byte) error {
 			DeliveryMode: amqp.Persistent,
 			Timestamp:    time.Now(),
 			Body:         body,
+			Headers:      headers,
 		},
 	)
 }
