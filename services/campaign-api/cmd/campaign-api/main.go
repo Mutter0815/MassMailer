@@ -12,11 +12,14 @@ import (
 	"github.com/Mutter0815/MassMailer/internal/store"
 	"github.com/Mutter0815/MassMailer/pkg/config"
 	"github.com/Mutter0815/MassMailer/pkg/db"
+	"github.com/Mutter0815/MassMailer/pkg/logx"
 	"github.com/Mutter0815/MassMailer/pkg/rmq"
 	"github.com/Mutter0815/MassMailer/services/campaign-api/server"
 )
 
 func main() {
+	logx.Init()
+	defer logx.Sync()
 	config.MustLoadAPI()
 	cfg := config.API
 
