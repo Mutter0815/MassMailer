@@ -1,0 +1,25 @@
+global:
+  scrape_interval: 10s
+  scrape_timeout: 5s
+  evaluation_interval: 10s
+
+scrape_configs:
+  - job_name: "campaign-api"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["campaign-api:8080"]
+
+  - job_name: "sender-worker"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["sender-worker:9090"]
+
+  - job_name: "postgres"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+
+  - job_name: "rabbitmq"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["rabbitmq:15692"]

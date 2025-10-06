@@ -1,4 +1,3 @@
-version: "3.9"
 
 services:
   postgres:
@@ -18,11 +17,26 @@ services:
       timeout: 5s
       retries: 10
 
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    environment:
+      DATA_SOURCE_NAME: postgresql://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-pass}@postgres:5432/${POSTGRES_DB:-massmailer}?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "9187:9187"   
+
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
     ports:
-      - "127.0.0.1:35672:5672"   # AMQP 
-      - "127.0.0.1:30080:15672" # UI
+      - "127.0.0.1:35672:5672"     # AMQP
+      - "127.0.0.1:30080:15672"    # UI
+      - "127.0.0.1:35692:15692"    # Prometheus metrics (rabbitmq_prometheus)
+    environment:
+    
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: "-rabbitmq_prometheus return_per_object_metrics true"
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
       interval: 10s
@@ -53,11 +67,34 @@ services:
       DB_DSN: postgres://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-pass}@postgres:5432/${POSTGRES_DB:-massmailer}?sslmode=disable
       RMQ_URL: ${RMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
       QUEUE: send_jobs
+      METRICS_ADDR: ":9090"     
     depends_on:
       postgres:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+    ports:
+      - "9090:9090"
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      campaign-api:
+        condition: service_started
+      sender-worker:
+        condition: service_started
+      postgres-exporter:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+    ports:
+      - "9095:9090"
 
 volumes:
   pgdata:
