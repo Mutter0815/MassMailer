@@ -1,20 +1,29 @@
-SHELL := /bin/bash
+.PHONY: up down logs migrate resetdb
 
-compose := docker compose -f deployments/docker-compose.yml --env-file deployments/.env
+compose := deployments/docker-compose.yml
+envfile := deployments/.env
 
-.PHONY: up down logs migrate curl
+# загружаем значения из .env (без лишних строк и комментов)
+include $(envfile)
+export $(shell sed 's/=.*//' $(envfile))
 
 up:
-	$(compose) up -d --build
+	docker compose -f $(compose) up -d --build
 
 down:
-	$(compose) down -v
+	docker compose -f $(compose) down -v
 
 logs:
-	$(compose) logs -f
+	docker compose -f $(compose) logs -f
 
 migrate:
-	docker exec -i $$(docker ps -qf name=postgres) \
-	  psql -U $$(grep POSTGRES_USER deployments/.env | cut -d= -f2) \
-	      -d $$(grep POSTGRES_DB deployments/.env | cut -d= -f2) \
-	      -f /migrations/0001_init.sql
+	docker compose -f $(compose) exec -T postgres \
+		psql -U $(POSTGRES_USER) -d $(POSTGRES_DB) -v ON_ERROR_STOP=1 \
+		-f /migrations/0001_init.sql
+
+resetdb:
+	docker compose -f $(compose) exec -T postgres \
+		psql -U $(POSTGRES_USER) -d postgres -c "DROP DATABASE IF EXISTS $(POSTGRES_DB);"
+	docker compose -f $(compose) exec -T postgres \
+		psql -U $(POSTGRES_USER) -d postgres -c "CREATE DATABASE $(POSTGRES_DB);"
+	$(MAKE) migrate
