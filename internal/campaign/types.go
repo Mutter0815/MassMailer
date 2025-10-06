@@ -27,3 +27,31 @@ type Campaign struct {
 	Status      string
 	CreatedAt   time.Time
 }
+
+type CampaignListItem struct {
+	ID          int64     `json:"id"`
+	Name        string    `json:"name"`
+	ScheduledAt time.Time `json:"scheduled_at"`
+	Status      string    `json:"status"`
+	CreatedAt   time.Time `json:"created_at"`
+	Stats       struct {
+		Total   int `json:"total"`
+		Pending int `json:"pending"`
+		Sent    int `json:"sent"`
+		Failed  int `json:"failed"`
+	} `json:"stats"`
+}
+type CampaignDetails struct {
+	ID          int64     `json:"id"`
+	Name        string    `json:"name"`
+	Body        string    `json:"body"`
+	ScheduledAt time.Time `json:"scheduled_at"`
+	Status      string    `json:"status"`
+	CreatedAt   time.Time `json:"created_at"`
+	Stats       struct {
+		Total   int `json:"total"`
+		Pending int `json:"pending"`
+		Sent    int `json:"sent"`
+		Failed  int `json:"failed"`
+	} `json:"stats"`
+}

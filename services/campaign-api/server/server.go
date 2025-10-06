@@ -4,15 +4,24 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+
+	"github.com/Mutter0815/MassMailer/pkg/metrics"
 )
 
 func NewHTTPServer(addr string, h *Handlers) *http.Server {
-	r := gin.Default()
-	r.GET("/healthz", h.Healthz)
-	r.POST("/campaigns", h.CreateCampaign)
+	gin.SetMode(gin.ReleaseMode)
 
-	return &http.Server{
-		Addr:    addr,
-		Handler: r,
-	}
+	r := gin.New()
+	r.Use(gin.Recovery())
+	r.Use(Observability())
+
+	r.GET("/healthz", h.Healthz)
+
+	r.POST("/campaigns", h.CreateCampaign)
+	r.GET("/campaigns", h.ListCampaigns)
+	r.GET("/campaigns/:id", h.GetCampaign)
+
+	r.GET("/metrics", gin.WrapH(metrics.Handler()))
+
+	return &http.Server{Addr: addr, Handler: r}
 }
