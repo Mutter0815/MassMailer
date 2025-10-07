@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/Mutter0815/MassMailer/docs"
 	"github.com/Mutter0815/MassMailer/pkg/metrics"
 )
 
@@ -17,6 +18,10 @@ func NewHTTPServer(addr string, h *Handlers) *http.Server {
 
 	r.GET("/healthz", h.Healthz)
 
+	r.GET("/docs", serveSwaggerHTML)
+	r.GET("/docs/campaign-api", serveSwaggerHTML)
+	r.GET("/docs/campaign-api/openapi.yaml", serveOpenAPI)
+
 	r.POST("/campaigns", h.CreateCampaign)
 	r.GET("/campaigns", h.ListCampaigns)
 	r.GET("/campaigns/:id", h.GetCampaign)
@@ -24,4 +29,12 @@ func NewHTTPServer(addr string, h *Handlers) *http.Server {
 	r.GET("/metrics", gin.WrapH(metrics.Handler()))
 
 	return &http.Server{Addr: addr, Handler: r}
+}
+
+func serveSwaggerHTML(c *gin.Context) {
+	c.Data(http.StatusOK, "text/html; charset=utf-8", docs.CampaignSwaggerHTML)
+}
+
+func serveOpenAPI(c *gin.Context) {
+	c.Data(http.StatusOK, "application/yaml; charset=utf-8", docs.CampaignOpenAPI)
 }

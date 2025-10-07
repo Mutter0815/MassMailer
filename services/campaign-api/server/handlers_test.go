@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -147,10 +148,10 @@ func TestCreateCampaign_TxError(t *testing.T) {
 
 	rr := httptest.NewRecorder()
 	body := bytes.NewBufferString(`{
-		"name":"X","body":"Y",
-		"scheduled_at":"2025-10-02T12:00:00Z",
-		"recipients":["u@example.com"]
-	}`)
+                "name":"X","body":"Y",
+                "scheduled_at":"2025-10-02T12:00:00Z",
+                "recipients":["u@example.com"]
+        }`)
 	req := httptest.NewRequest(http.MethodPost, "/campaigns", body)
 	req.Header.Set("Content-Type", "application/json")
 
@@ -158,4 +159,40 @@ func TestCreateCampaign_TxError(t *testing.T) {
 	if rr.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500, got %d", rr.Code)
 	}
+}
+
+func TestDocsEndpoints(t *testing.T) {
+	h := &Handlers{Store: &fakeStore{}, Pub: &fakePublisher{}}
+	srv := NewHTTPServer(":0", h)
+
+	t.Run("html", func(t *testing.T) {
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/docs", nil)
+
+		srv.Handler.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d", rr.Code)
+		}
+		if !strings.Contains(rr.Body.String(), "SwaggerUIBundle") {
+			t.Fatalf("swagger bundle not rendered: %s", rr.Body.String())
+		}
+	})
+
+	t.Run("openapi", func(t *testing.T) {
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/docs/campaign-api/openapi.yaml", nil)
+
+		srv.Handler.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d", rr.Code)
+		}
+		if ct := rr.Header().Get("Content-Type"); !strings.Contains(ct, "yaml") {
+			t.Fatalf("unexpected content type: %s", ct)
+		}
+		if !strings.Contains(rr.Body.String(), "openapi: 3.0.3") {
+			t.Fatalf("unexpected body: %s", rr.Body.String())
+		}
+	})
 }
