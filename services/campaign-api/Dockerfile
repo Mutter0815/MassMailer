@@ -7,6 +7,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 
+COPY docs ./docs
 COPY internal ./internal
 COPY pkg ./pkg
 COPY services/campaign-api ./services/campaign-api
